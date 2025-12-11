@@ -1,0 +1,31 @@
+services:
+  docmost-mcp:
+    build: .
+    container_name: docmost-mcp-server
+    environment:
+      # Connect directly to internal Docmost (bypasses Authentik)
+      DOCMOST_URL: ${DOCMOST_URL:-http://192.168.1.30:3002}
+
+      # Docmost login credentials
+      DOCMOST_EMAIL: ${DOCMOST_EMAIL:-}
+      DOCMOST_PASSWORD: ${DOCMOST_PASSWORD:-}
+
+      # Optional: Direct auth token
+      DOCMOST_AUTH_TOKEN: ${DOCMOST_AUTH_TOKEN:-}
+
+      # Debug mode
+      MCP_DEBUG: ${MCP_DEBUG:-false}
+
+    # MCP uses stdin/stdout for communication
+    stdin_open: true
+    tty: true
+
+    # Always restart to keep the server running
+    restart: always
+
+    # Use host network to access internal services
+    network_mode: host
+
+    volumes:
+      # Persist logs
+      - ./logs:/app/logs

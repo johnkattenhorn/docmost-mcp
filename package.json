@@ -1,0 +1,30 @@
+{
+  "name": "docmost-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Docmost - connects AI assistants to standard Docmost instances",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.1",
+    "@tiptap/core": "^3.13.0",
+    "@tiptap/extension-link": "^3.13.0",
+    "@tiptap/html": "^3.13.0",
+    "@tiptap/starter-kit": "^3.13.0",
+    "@types/marked": "^6.0.0",
+    "axios": "^1.7.9",
+    "dotenv": "^16.5.0",
+    "form-data": "^4.0.1",
+    "marked": "^17.0.1",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
