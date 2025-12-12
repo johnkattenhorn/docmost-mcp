@@ -281,48 +281,52 @@ async function main() {
 
     server.tool(
       'docmost_update_page_markdown',
-      'Update an existing page using Markdown content. This is the recommended way to update page content as it handles the TipTap JSON conversion automatically.',
+      'Update an existing page using Markdown content. NOTE: Due to Docmost API limitations, this replaces the page (deletes and recreates) which changes the page ID. Use docmost_update_page for metadata-only updates.',
       {
         pageId: z.string().describe('ID of the page to update'),
-        title: z.string().optional().describe('New title for the page'),
-        content: z.string().optional().describe('New content in Markdown format'),
-        icon: z.string().optional().describe('Page icon (emoji)'),
-        coverPhoto: z.string().optional().describe('Cover photo URL'),
+        spaceId: z.string().describe('ID of the space containing the page'),
+        title: z.string().optional().describe('New title for the page (uses existing if not provided)'),
+        content: z.string().describe('New content in Markdown format'),
       },
       async (params) => {
         log(`update_page_markdown called with: ${JSON.stringify(params)}`);
         try {
-          const updateData: {
-            pageId: string;
-            title?: string;
-            content?: object;
-            icon?: string;
-            coverPhoto?: string;
-          } = {
-            pageId: params.pageId,
-          };
+          // Step 1: Get existing page info to preserve metadata
+          log(`Fetching existing page info for ${params.pageId}`);
+          const existingPage = await client.getPage(params.pageId, params.spaceId);
 
-          if (params.title) {
-            updateData.title = params.title;
+          if (!existingPage) {
+            throw new Error(`Page ${params.pageId} not found`);
           }
 
-          if (params.content) {
-            // Convert markdown to TipTap JSON
-            updateData.content = await markdownToTipTapJSON(params.content);
-            log(`Converted markdown to TipTap JSON: ${JSON.stringify(updateData.content).substring(0, 200)}...`);
-          }
+          const pageTitle = params.title || existingPage.title || 'Untitled';
+          log(`Using title: ${pageTitle}`);
 
-          if (params.icon) {
-            updateData.icon = params.icon;
-          }
+          // Step 2: Delete the existing page
+          log(`Deleting existing page ${params.pageId}`);
+          await client.deletePage(params.pageId);
 
-          if (params.coverPhoto) {
-            updateData.coverPhoto = params.coverPhoto;
-          }
+          // Step 3: Create new page with updated content using import endpoint
+          log(`Creating new page with content via import`);
+          const result = await client.importPage(
+            params.spaceId,
+            pageTitle,
+            params.content,
+            'markdown'
+          );
 
-          const result = await client.updatePage(updateData);
+          log(`Page replaced successfully. New page ID: ${result?.id || 'unknown'}`);
+
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                message: 'Page content updated (page was replaced with new ID)',
+                oldPageId: params.pageId,
+                newPage: result
+              }, null, 2)
+            }],
           };
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Unknown error';
