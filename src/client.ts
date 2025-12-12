@@ -329,17 +329,19 @@ export class DocmostClient {
     const FormData = (await import('form-data')).default;
     const form = new FormData();
 
-    // Check if content already starts with the title as H1
+    // Pattern to match H1 at start of content (will be stripped to avoid duplication)
+    // Docmost displays the page title in the header, so we don't want H1 in content too
     const h1Pattern = format === 'markdown'
-      ? new RegExp(`^#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\n`, 'i')
-      : new RegExp(`^<h1[^>]*>\\s*${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*</h1>`, 'i');
+      ? new RegExp(`^#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\n+`, 'i')
+      : new RegExp(`^<h1[^>]*>\\s*${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*</h1>\\s*`, 'i');
 
-    const hasTitle = h1Pattern.test(content.trim());
+    // Strip any leading H1 that matches the title to avoid duplication
+    const contentWithoutTitle = content.trim().replace(h1Pattern, '');
 
-    // Only add title if content doesn't already have it
-    const fileContent = hasTitle
-      ? content
-      : (format === 'markdown' ? `# ${title}\n\n${content}` : `<h1>${title}</h1>\n${content}`);
+    // Always add the title as H1 for import (Docmost uses it for the page title)
+    const fileContent = format === 'markdown'
+      ? `# ${title}\n\n${contentWithoutTitle}`
+      : `<h1>${title}</h1>\n${contentWithoutTitle}`;
 
     const extension = format === 'markdown' ? '.md' : '.html';
     const filename = `${title.replace(/[^a-zA-Z0-9]/g, '_')}${extension}`;
