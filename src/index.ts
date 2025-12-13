@@ -13,6 +13,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { z } from 'zod';
 import { config as dotenvConfig } from 'dotenv';
 import { DocmostClient } from './client.js';
@@ -648,6 +649,7 @@ async function main() {
     if (httpMode) {
       // HTTP mode for Docker deployment
       const sessions = new Map<string, StreamableHTTPServerTransport>();
+      const sseSessions = new Map<string, SSEServerTransport>();
 
       const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
         const url = new URL(req.url || '/', `http://localhost:${httpPort}`);
@@ -660,6 +662,28 @@ async function main() {
         }
 
         // MCP endpoint
+        // SSE endpoint
+        if (url.pathname === '/sse' && req.method === 'GET') {
+          const transport = new SSEServerTransport('/messages', res);
+          sseSessions.set(transport.sessionId, transport);
+          transport.onclose = () => { sseSessions.delete(transport.sessionId); };
+          await server.connect(transport);
+          return;
+        }
+
+        // SSE messages endpoint
+        if (url.pathname === '/messages' && req.method === 'POST') {
+          const sessionId = url.searchParams.get('sessionId');
+          if (!sessionId || !sseSessions.has(sessionId)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid or missing session ID' }));
+            return;
+          }
+          const transport = sseSessions.get(sessionId)!;
+          await transport.handlePostMessage(req, res);
+          return;
+        }
+
         if (url.pathname === '/mcp') {
           const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
@@ -705,7 +729,8 @@ async function main() {
       httpServer.listen(httpPort, '0.0.0.0', () => {
         log(`Docmost MCP HTTP server listening on http://0.0.0.0:${httpPort}`);
         console.log(`Docmost MCP HTTP server listening on http://0.0.0.0:${httpPort}`);
-        console.log(`MCP endpoint: http://0.0.0.0:${httpPort}/mcp`);
+        console.log('Streamable HTTP: http://0.0.0.0:' + httpPort + '/mcp');
+        console.log('SSE: http://0.0.0.0:' + httpPort + '/sse');
         console.log(`Health check: http://0.0.0.0:${httpPort}/health`);
       });
     } else {
