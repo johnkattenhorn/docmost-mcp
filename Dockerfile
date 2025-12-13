@@ -1,24 +1,22 @@
 FROM node:20-alpine
 
-# Install pnpm
-RUN npm install -g pnpm
-
 WORKDIR /app
 
 # Copy package files
-COPY package.json pnpm-lock.yaml* ./
+COPY package*.json ./
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile || pnpm install
+# Install dependencies (production only)
+RUN npm ci --only=production
 
-# Copy source files
-COPY . .
+# Copy built files
+COPY dist/ ./dist/
 
-# Build TypeScript
-RUN pnpm run build
+# Expose HTTP port
+EXPOSE 3000
 
-# Set environment
-ENV NODE_ENV=production
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
-# Run the MCP server
-CMD ["node", "dist/index.js"]
+# Run the MCP server in HTTP mode
+CMD ["node", "dist/index.js", "--http"]

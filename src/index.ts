@@ -4,19 +4,30 @@
  *
  * Model Context Protocol server for connecting AI assistants to standard Docmost instances.
  * Works with any Docmost installation without requiring modifications.
+ *
+ * Supports both STDIO and HTTP transports:
+ * - Default: STDIO transport for local CLI usage
+ * - HTTP mode: Use --http flag for Docker/remote deployment
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { config as dotenvConfig } from 'dotenv';
 import { DocmostClient } from './client.js';
 import { markdownToTipTapJSON, htmlToTipTapJSON } from './markdown-converter.js';
 import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
+import { createServer, IncomingMessage, ServerResponse } from 'http';
+import { randomUUID } from 'crypto';
 
 // Load environment variables
 dotenvConfig();
+
+// HTTP mode and port configuration
+const httpMode = process.argv.includes('--http');
+const httpPort = parseInt(process.env.PORT || '3000', 10);
 
 // Logging
 const DEBUG = process.env.MCP_DEBUG === 'true';
@@ -633,9 +644,76 @@ async function main() {
 
     // Connect to MCP transport
     log('Starting MCP server...');
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    log('Docmost MCP Server running successfully');
+
+    if (httpMode) {
+      // HTTP mode for Docker deployment
+      const sessions = new Map<string, StreamableHTTPServerTransport>();
+
+      const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+        const url = new URL(req.url || '/', `http://localhost:${httpPort}`);
+
+        // Health check endpoint
+        if (url.pathname === '/health') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'healthy' }));
+          return;
+        }
+
+        // MCP endpoint
+        if (url.pathname === '/mcp') {
+          const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+          if (req.method === 'POST') {
+            let transport = sessionId ? sessions.get(sessionId) : undefined;
+
+            if (!transport) {
+              transport = new StreamableHTTPServerTransport({
+                sessionIdGenerator: () => randomUUID(),
+                onsessioninitialized: (id) => {
+                  sessions.set(id, transport!);
+                },
+              });
+
+              transport.onclose = () => {
+                if (sessionId) sessions.delete(sessionId);
+              };
+
+              await server.connect(transport);
+            }
+
+            await transport.handleRequest(req, res);
+            return;
+          }
+
+          if (req.method === 'GET' || req.method === 'DELETE') {
+            if (!sessionId || !sessions.has(sessionId)) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Invalid or missing session ID' }));
+              return;
+            }
+
+            const transport = sessions.get(sessionId)!;
+            await transport.handleRequest(req, res);
+            return;
+          }
+        }
+
+        res.writeHead(404);
+        res.end('Not found');
+      });
+
+      httpServer.listen(httpPort, '0.0.0.0', () => {
+        log(`Docmost MCP HTTP server listening on http://0.0.0.0:${httpPort}`);
+        console.log(`Docmost MCP HTTP server listening on http://0.0.0.0:${httpPort}`);
+        console.log(`MCP endpoint: http://0.0.0.0:${httpPort}/mcp`);
+        console.log(`Health check: http://0.0.0.0:${httpPort}/health`);
+      });
+    } else {
+      // STDIO mode for direct CLI usage
+      const transport = new StdioServerTransport();
+      await server.connect(transport);
+      log('Docmost MCP Server running successfully (stdio mode)');
+    }
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     log(`Fatal error: ${msg}`);
