@@ -2,14 +2,21 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files and tsconfig
 COPY package*.json ./
+COPY tsconfig.json ./
 
-# Install dependencies (production only)
-RUN npm ci --only=production
+# Install all dependencies (including dev for build)
+RUN npm ci && npm cache clean --force
 
-# Copy built files
-COPY dist/ ./dist/
+# Copy source code
+COPY src/ ./src/
+
+# Build TypeScript
+RUN npm run build
+
+# Remove dev dependencies and source to reduce image size
+RUN rm -rf src/ tsconfig.json && npm prune --production
 
 # Expose HTTP port
 EXPOSE 3000
