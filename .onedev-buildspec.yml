@@ -1,0 +1,74 @@
+version: 35
+jobs:
+- name: Build and Deploy
+  steps:
+  - !CheckoutStep
+    name: Checkout
+    cloneCredential: !DefaultCredential {}
+    withLfs: false
+    withSubmodules: false
+    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+  - !CommandStep
+    name: Build and Deploy via SSH
+    runInContainer: true
+    image: alpine:latest
+    interpreter: !DefaultInterpreter
+      commands: |
+        set -e
+        apk add --no-cache openssh-client git rsync
+
+        # Setup SSH key from secret
+        mkdir -p ~/.ssh
+        echo "@secret:DEPLOY_KEY@" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+
+        # Get commit hash
+        COMMIT_HASH=$(git rev-parse --short HEAD)
+        echo "Building commit: ${COMMIT_HASH}"
+
+        # Sync source to build host via Proxmox
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@@192.168.1.3 "
+          # Create temp build directory in LXC-135
+          pct exec 135 -- rm -rf /tmp/docmost-mcp-build
+          pct exec 135 -- mkdir -p /tmp/docmost-mcp-build
+        "
+
+        # Copy source files to Proxmox host first, then into LXC
+        tar czf - --exclude=node_modules --exclude=.git --exclude=dist . | \
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@@192.168.1.3 "
+            cat > /tmp/docmost-mcp-source.tar.gz
+            pct push 135 /tmp/docmost-mcp-source.tar.gz /tmp/docmost-mcp-source.tar.gz
+            pct exec 135 -- tar xzf /tmp/docmost-mcp-source.tar.gz -C /tmp/docmost-mcp-build
+            rm /tmp/docmost-mcp-source.tar.gz
+          "
+
+        # Build and push Docker image inside LXC-135
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@@192.168.1.3 "pct exec 135 -- bash -c '
+          cd /tmp/docmost-mcp-build && \
+          echo registry123 | docker login 192.168.1.30:5000 -u homelab --password-stdin && \
+          docker build -t 192.168.1.30:5000/docmost-mcp:latest -t 192.168.1.30:5000/docmost-mcp:${COMMIT_HASH} . && \
+          docker push 192.168.1.30:5000/docmost-mcp:latest && \
+          docker push 192.168.1.30:5000/docmost-mcp:${COMMIT_HASH} && \
+          echo Built and pushed docmost-mcp:${COMMIT_HASH}
+        '"
+
+        # Deploy
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no root@@192.168.1.3 "pct exec 135 -- bash -c '
+          cd /opt/docker/mcp-servers/docmost-mcp && \
+          docker compose pull && \
+          docker compose up -d && \
+          docker image prune -f && \
+          rm -rf /tmp/docmost-mcp-build
+        '"
+
+        echo "Build and deploy complete!"
+    useTTY: false
+    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+  triggers:
+  - !BranchUpdateTrigger
+    branches: main
+  jobDependencies: []
+  retryCondition: never
+  maxRetries: 3
+  retryDelay: 30
+  timeout: 3600

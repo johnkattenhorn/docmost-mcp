@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output (we build in Docker)
+dist/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.cursor/
+.vscode/
+*.swp
+*.swo
+
+# Environment files (secrets should be passed at runtime)
+.env
+.env.*
+
+# Documentation
+*.md
+docs/
+
+# Tests
+tests/
+**/*.test.ts
+coverage/
+
+# CI/CD configs
+.github/
+.onedev-buildspec.yml
+
+# Misc
+.DS_Store
+*.log
