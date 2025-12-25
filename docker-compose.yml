@@ -2,19 +2,15 @@ services:
   docmost-mcp:
     image: 192.168.1.30:5000/docmost-mcp:latest
     container_name: docmost-mcp
-    restart: unless-stopped
+    restart: always
     ports:
       - "3002:3000"
+    env_file:
+      - .env
     environment:
-      # Connect directly to internal Docmost (bypasses Authentik)
-      - DOCMOST_URL=${DOCMOST_URL:-http://192.168.1.30:3002}
-      # Docmost login credentials
-      - DOCMOST_EMAIL=${DOCMOST_EMAIL}
-      - DOCMOST_PASSWORD=${DOCMOST_PASSWORD}
-      # Optional: Direct auth token (alternative to email/password)
-      # - DOCMOST_AUTH_TOKEN=${DOCMOST_AUTH_TOKEN}
-      # Debug mode
-      - MCP_DEBUG=${MCP_DEBUG:-false}
+      - OTEL_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.1.93:4318
+      - OTEL_SERVICE_NAME=docmost-mcp
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/health"]
       interval: 30s
