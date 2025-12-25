@@ -18,10 +18,9 @@ import { z } from 'zod';
 import { config as dotenvConfig } from 'dotenv';
 import { DocmostClient } from './client.js';
 import { markdownToTipTapJSON, htmlToTipTapJSON } from './markdown-converter.js';
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
-import { resolve, dirname } from 'path';
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { randomUUID } from 'crypto';
+import { logger } from './utils/observability.js';
 
 // Load environment variables
 dotenvConfig();
@@ -30,27 +29,12 @@ dotenvConfig();
 const httpMode = process.argv.includes('--http');
 const httpPort = parseInt(process.env.PORT || '3000', 10);
 
-// Logging
+// Debug mode flag
 const DEBUG = process.env.MCP_DEBUG === 'true';
-const logFile = resolve(process.cwd(), 'docmost-mcp.log');
 
+// Legacy log function that uses the new logger
 function log(message: string) {
-  const timestamp = new Date().toISOString();
-  const logMessage = `${timestamp} - ${message}\n`;
-
-  if (DEBUG) {
-    console.error(logMessage);
-  }
-
-  try {
-    const logDir = dirname(logFile);
-    if (!existsSync(logDir)) {
-      mkdirSync(logDir, { recursive: true });
-    }
-    writeFileSync(logFile, logMessage, { flag: 'a' });
-  } catch {
-    // Ignore logging errors
-  }
+  logger.debug(message);
 }
 
 // Configuration
@@ -65,11 +49,12 @@ const config = {
   debug: DEBUG,
 };
 
-log(`Starting Docmost MCP Server`);
-log(`Docmost URL: ${config.baseUrl}`);
-log(`Auth Token: ${config.authToken ? '***' : 'not set'}`);
-log(`Email: ${config.email || 'not set'}`);
-log(`Authentik: ${config.authentikUsername ? `${config.authentikUsername} (token set)` : 'not configured'}`);
+logger.info('Starting Docmost MCP Server', {
+  baseUrl: config.baseUrl,
+  hasAuthToken: !!config.authToken,
+  email: config.email || 'not set',
+  authentik: config.authentikUsername ? `${config.authentikUsername} (token set)` : 'not configured',
+});
 
 // Initialize client
 const client = new DocmostClient(config);
@@ -643,16 +628,16 @@ function buildServer(client: DocmostClient): McpServer {
   return server;
 }
 
-async function main() {
+async function startServer() {
   try {
     // Authenticate with Docmost
-    log('Authenticating with Docmost...');
+    logger.info('Authenticating with Docmost...');
     await client.login();
     const user = await client.getCurrentUser();
-    log(`Authenticated as: ${user.user?.name || user.user?.email || 'Unknown'}`);
+    logger.info('Authenticated', { user: user.user?.name || user.user?.email || 'Unknown' });
 
     // Connect to MCP transport
-    log('Starting MCP server...');
+    logger.info('Starting MCP server...', { httpMode, httpPort });
 
     if (httpMode) {
       // HTTP mode for Docker deployment
@@ -672,7 +657,7 @@ async function main() {
 
         // SSE endpoint - create NEW server instance per connection
         if (url.pathname === '/sse' && req.method === 'GET') {
-          console.error('New SSE connection established');
+          logger.info('New SSE connection established');
           const transport = new SSEServerTransport('/messages', res);
           const sessionId = transport.sessionId;
 
@@ -681,7 +666,7 @@ async function main() {
 
           sseSessions.set(sessionId, { transport, server: sseServer });
           transport.onclose = () => {
-            console.error(`SSE connection closed: ${sessionId}`);
+            logger.info('SSE connection closed', { sessionId });
             sseSessions.delete(sessionId);
           };
           await sseServer.connect(transport);
@@ -748,29 +733,34 @@ async function main() {
       });
 
       httpServer.listen(httpPort, '0.0.0.0', () => {
-        log(`Docmost MCP HTTP server listening on http://0.0.0.0:${httpPort}`);
-        console.log(`Docmost MCP HTTP server listening on http://0.0.0.0:${httpPort}`);
-        console.log('Streamable HTTP: http://0.0.0.0:' + httpPort + '/mcp');
-        console.log('SSE: http://0.0.0.0:' + httpPort + '/sse');
-        console.log(`Health check: http://0.0.0.0:${httpPort}/health`);
+        logger.info('Docmost MCP HTTP server started', {
+          port: httpPort,
+          streamableEndpoint: `http://0.0.0.0:${httpPort}/mcp`,
+          sseEndpoint: `http://0.0.0.0:${httpPort}/sse`,
+          healthEndpoint: `http://0.0.0.0:${httpPort}/health`,
+        });
       });
     } else {
       // STDIO mode for direct CLI usage (single connection, one server is fine)
       const stdioServer = buildServer(client);
       const transport = new StdioServerTransport();
       await stdioServer.connect(transport);
-      log('Docmost MCP Server running successfully (stdio mode)');
+      logger.info('Docmost MCP server running (stdio mode)');
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
-    log(`Fatal error: ${msg}`);
-    console.error(`Fatal error: ${msg}`);
+    logger.error('Fatal error', { error: msg });
     process.exit(1);
   }
 }
 
-// Start server
-main().catch((error) => {
-  console.error('Failed to start MCP server:', error);
-  process.exit(1);
-});
+// Export for bootstrap
+export { startServer };
+
+// Allow direct execution for backwards compatibility
+if (import.meta.url === `file://${process.argv[1]}`) {
+  startServer().catch((error) => {
+    logger.error('Failed to start MCP server', { error: error instanceof Error ? error.message : String(error) });
+    process.exit(1);
+  });
+}

@@ -6,11 +6,15 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "start": "node dist/bootstrap.js",
+    "dev": "tsx watch src/bootstrap.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.1",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.67.3",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.208.0",
+    "@opentelemetry/sdk-node": "^0.208.0",
     "@tiptap/core": "^3.13.0",
     "@tiptap/extension-link": "^3.13.0",
     "@tiptap/html": "^3.13.0",
