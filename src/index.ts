@@ -74,23 +74,20 @@ log(`Authentik: ${config.authentikUsername ? `${config.authentikUsername} (token
 // Initialize client
 const client = new DocmostClient(config);
 
-// Initialize MCP server
-const server = new McpServer({
-  name: 'docmost',
-  version: '1.0.0',
-});
+/**
+ * Factory function to create a new MCP server instance with all tools registered.
+ * IMPORTANT: Each SSE connection needs its own Server instance.
+ * The MCP SDK requires one Server per transport connection.
+ */
+function buildServer(client: DocmostClient): McpServer {
+  const server = new McpServer({
+    name: 'docmost',
+    version: '1.0.0',
+  });
 
-async function main() {
-  try {
-    // Authenticate with Docmost
-    log('Authenticating with Docmost...');
-    await client.login();
-    const user = await client.getCurrentUser();
-    log(`Authenticated as: ${user.user?.name || user.user?.email || 'Unknown'}`);
+  // ==================== SPACE TOOLS ====================
 
-    // ==================== SPACE TOOLS ====================
-
-    server.tool(
+  server.tool(
       'docmost_list_spaces',
       'List all spaces in the Docmost workspace',
       {
@@ -643,13 +640,25 @@ async function main() {
       }
     );
 
+  return server;
+}
+
+async function main() {
+  try {
+    // Authenticate with Docmost
+    log('Authenticating with Docmost...');
+    await client.login();
+    const user = await client.getCurrentUser();
+    log(`Authenticated as: ${user.user?.name || user.user?.email || 'Unknown'}`);
+
     // Connect to MCP transport
     log('Starting MCP server...');
 
     if (httpMode) {
       // HTTP mode for Docker deployment
-      const sessions = new Map<string, StreamableHTTPServerTransport>();
-      const sseSessions = new Map<string, SSEServerTransport>();
+      // Store { transport, server } per session - each SSE connection needs its own Server
+      const sessions = new Map<string, { transport: StreamableHTTPServerTransport; server: McpServer }>();
+      const sseSessions = new Map<string, { transport: SSEServerTransport; server: McpServer }>();
 
       const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
         const url = new URL(req.url || '/', `http://localhost:${httpPort}`);
@@ -661,13 +670,21 @@ async function main() {
           return;
         }
 
-        // MCP endpoint
-        // SSE endpoint
+        // SSE endpoint - create NEW server instance per connection
         if (url.pathname === '/sse' && req.method === 'GET') {
+          console.error('New SSE connection established');
           const transport = new SSEServerTransport('/messages', res);
-          sseSessions.set(transport.sessionId, transport);
-          transport.onclose = () => { sseSessions.delete(transport.sessionId); };
-          await server.connect(transport);
+          const sessionId = transport.sessionId;
+
+          // Create a NEW server instance for this connection
+          const sseServer = buildServer(client);
+
+          sseSessions.set(sessionId, { transport, server: sseServer });
+          transport.onclose = () => {
+            console.error(`SSE connection closed: ${sessionId}`);
+            sseSessions.delete(sessionId);
+          };
+          await sseServer.connect(transport);
           return;
         }
 
@@ -679,7 +696,7 @@ async function main() {
             res.end(JSON.stringify({ error: 'Invalid or missing session ID' }));
             return;
           }
-          const transport = sseSessions.get(sessionId)!;
+          const { transport } = sseSessions.get(sessionId)!;
           await transport.handlePostMessage(req, res);
           return;
         }
@@ -688,13 +705,16 @@ async function main() {
           const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
           if (req.method === 'POST') {
-            let transport = sessionId ? sessions.get(sessionId) : undefined;
+            let session = sessionId ? sessions.get(sessionId) : undefined;
 
-            if (!transport) {
-              transport = new StreamableHTTPServerTransport({
+            if (!session) {
+              // Create NEW server instance for this connection
+              const mcpServer = buildServer(client);
+
+              const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: () => randomUUID(),
                 onsessioninitialized: (id) => {
-                  sessions.set(id, transport!);
+                  sessions.set(id, { transport, server: mcpServer });
                 },
               });
 
@@ -702,10 +722,11 @@ async function main() {
                 if (sessionId) sessions.delete(sessionId);
               };
 
-              await server.connect(transport);
+              await mcpServer.connect(transport);
+              session = { transport, server: mcpServer };
             }
 
-            await transport.handleRequest(req, res);
+            await session.transport.handleRequest(req, res);
             return;
           }
 
@@ -716,7 +737,7 @@ async function main() {
               return;
             }
 
-            const transport = sessions.get(sessionId)!;
+            const { transport } = sessions.get(sessionId)!;
             await transport.handleRequest(req, res);
             return;
           }
@@ -734,9 +755,10 @@ async function main() {
         console.log(`Health check: http://0.0.0.0:${httpPort}/health`);
       });
     } else {
-      // STDIO mode for direct CLI usage
+      // STDIO mode for direct CLI usage (single connection, one server is fine)
+      const stdioServer = buildServer(client);
       const transport = new StdioServerTransport();
-      await server.connect(transport);
+      await stdioServer.connect(transport);
       log('Docmost MCP Server running successfully (stdio mode)');
     }
   } catch (error) {
