@@ -26,7 +26,7 @@ import { logger } from './utils/observability.js';
 dotenvConfig();
 
 // HTTP mode and port configuration
-const httpMode = process.argv.includes('--http');
+const httpMode = process.argv.includes('--http') || process.env.MCP_TRANSPORT === 'http';
 const httpPort = parseInt(process.env.PORT || '3000', 10);
 
 // Debug mode flag
