@@ -245,14 +245,14 @@ function buildServer(client: DocmostClient): McpServer {
       async (params) => {
         log(`create_page called with: ${JSON.stringify(params)}`);
         try {
-          // Use import endpoint for markdown content with hierarchy support
-          const result = await client.importPage(
-            params.spaceId,
-            params.title,
-            params.content || '',
-            'markdown',
-            params.parentPageId
-          );
+          // Use createPage which properly handles parentPageId with format: 'markdown'
+          const result = await client.createPage({
+            title: params.title,
+            spaceId: params.spaceId,
+            parentPageId: params.parentPageId,
+            content: params.content,
+            format: 'markdown',
+          });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -468,16 +468,31 @@ function buildServer(client: DocmostClient): McpServer {
 
     server.tool(
       'docmost_create_comment',
-      'Create a comment on a page',
+      'Create a comment on a page. Content can be plain text (auto-converted to TipTap format) or TipTap JSON.',
       {
         pageId: z.string().describe('ID of the page to comment on'),
-        content: z.any().describe('Comment content'),
+        content: z.union([z.string(), z.any()]).describe('Comment content - plain text or TipTap JSON object'),
         parentCommentId: z.string().optional().describe('ID of parent comment for replies'),
       },
       async (params) => {
         log(`create_comment called with: ${JSON.stringify(params)}`);
         try {
-          const result = await client.createComment(params);
+          // Convert string content to TipTap JSON format
+          let content = params.content;
+          if (typeof content === 'string') {
+            content = {
+              type: 'doc',
+              content: [{
+                type: 'paragraph',
+                content: [{ type: 'text', text: content }]
+              }]
+            };
+          }
+          const result = await client.createComment({
+            pageId: params.pageId,
+            content,
+            parentCommentId: params.parentCommentId,
+          });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -1042,14 +1057,14 @@ function buildServer(client: DocmostClient): McpServer {
 
           for (const page of params.pages) {
             try {
-              const result = await client.importPage(
-                params.spaceId,
-                page.title,
-                page.content || '',
-                'markdown',
-                page.parentPageId
-              );
-              created.push({ title: page.title, pageId: result.id });
+              const result = await client.createPage({
+                title: page.title,
+                spaceId: params.spaceId,
+                parentPageId: page.parentPageId,
+                content: page.content,
+                format: 'markdown',
+              });
+              created.push({ title: page.title, pageId: result.data?.id || result.id });
             } catch (error) {
               const msg = error instanceof Error ? error.message : 'Unknown error';
               failed.push({ title: page.title, error: msg });
