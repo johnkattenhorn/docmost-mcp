@@ -36,20 +36,6 @@ export function buildExcalidrawNode(attachmentId: string, src: string, title: st
 }
 
 /**
- * Build an image node
- */
-export function buildImageNode(src: string, alt?: string, title?: string): object {
-  return {
-    type: 'image',
-    attrs: {
-      src,
-      alt: alt || '',
-      title: title || '',
-    },
-  };
-}
-
-/**
  * Build a paragraph node with text content
  */
 export function buildParagraphNode(text: string): object {

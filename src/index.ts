@@ -17,11 +17,9 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { z } from 'zod';
 import { config as dotenvConfig } from 'dotenv';
 import { DocmostClient } from './client.js';
-import { markdownToTipTapJSON, htmlToTipTapJSON } from './markdown-converter.js';
 import {
   buildDrawioNode,
   buildExcalidrawNode,
-  buildImageNode,
   buildAttachmentUrl,
   buildMarkdownImage,
   appendNodeToDocument,
