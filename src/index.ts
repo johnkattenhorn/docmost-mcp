@@ -631,6 +631,7 @@ function buildServer(client: DocmostClient): McpServer {
         position: z.string().describe('New position string (5-12 characters, e.g., "a00001")'),
         after: z.string().optional().describe('ID of the page to place this page after'),
         before: z.string().optional().describe('ID of the page to place this page before'),
+        parentPageId: z.string().optional().describe('New parent page ID (include to change parent, omit to keep current)'),
       },
       async (params) => {
         log(`move_page called with: ${JSON.stringify(params)}`);
@@ -645,6 +646,7 @@ function buildServer(client: DocmostClient): McpServer {
             position: params.position,
             after: params.after,
             before: params.before,
+            parentPageId: params.parentPageId,
           });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -905,21 +907,27 @@ function buildServer(client: DocmostClient): McpServer {
 
     server.tool(
       'docmost_move_page_to_parent',
-      'Move an existing page to a different parent page or to root level',
+      'Move an existing page to a different parent page or to root level. Uses /api/pages/move endpoint.',
       {
         pageId: z.string().describe('ID of page to move'),
-        parentPageId: z.string().optional().describe('New parent page ID (omit for root level)'),
+        parentPageId: z.string().optional().describe('New parent page ID (omit or null for root level)'),
+        position: z.string().optional().describe('Position string (5-12 chars). Defaults to "a0000" (top of list)'),
       },
       async (params) => {
         log(`move_page_to_parent called with: ${JSON.stringify(params)}`);
         try {
-          const result = await client.movePageToParent(params.pageId, params.parentPageId || null);
+          const result = await client.movePageToParent(
+            params.pageId,
+            params.parentPageId || null,
+            params.position
+          );
           return {
             content: [{
               type: 'text',
               text: JSON.stringify({
                 pageId: params.pageId,
                 newParentId: params.parentPageId || null,
+                position: params.position || 'a0000',
                 success: true,
                 result,
               }, null, 2)

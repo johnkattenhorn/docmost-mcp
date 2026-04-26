@@ -210,7 +210,13 @@ export class DocmostClient {
     return response.data;
   }
 
-  async movePage(data: { pageId: string; position: string; after?: string; before?: string }): Promise<any> {
+  async movePage(data: {
+    pageId: string;
+    position: string;
+    after?: string;
+    before?: string;
+    parentPageId?: string | null;
+  }): Promise<any> {
     const response = await this.client.post('/api/pages/move', data);
     return response.data;
   }
@@ -483,10 +489,12 @@ export class DocmostClient {
    * Move a page to a different parent
    * @param pageId - ID of the page to move
    * @param parentPageId - ID of the new parent page (null for root level)
+   * @param position - Optional position string (5-12 chars), defaults to 'a0000' (top of list)
    */
-  async movePageToParent(pageId: string, parentPageId: string | null): Promise<any> {
-    const response = await this.client.post('/api/pages/update', {
+  async movePageToParent(pageId: string, parentPageId: string | null, position?: string): Promise<any> {
+    const response = await this.client.post('/api/pages/move', {
       pageId,
+      position: position || 'a0000',
       parentPageId: parentPageId || null,
     });
     return response.data;
