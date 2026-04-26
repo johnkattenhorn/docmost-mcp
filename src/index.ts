@@ -701,37 +701,17 @@ function buildServer(client: DocmostClient): McpServer {
     );
 
     server.tool(
-      'docmost_list_attachments',
-      'List all attachments on a page',
+      'docmost_get_attachment_info',
+      'Get information about an attachment by ID',
       {
-        pageId: z.string().describe('ID of the page'),
+        attachmentId: z.string().describe('ID of the attachment'),
       },
       async (params) => {
-        log(`list_attachments called with: ${JSON.stringify(params)}`);
+        log(`get_attachment_info called with: ${JSON.stringify(params)}`);
         try {
-          const result = await client.listAttachments(params.pageId);
+          const result = await client.getAttachmentInfo(params.attachmentId);
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : 'Unknown error';
-          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
-        }
-      }
-    );
-
-    server.tool(
-      'docmost_delete_attachment',
-      'Delete an attachment from a page',
-      {
-        attachmentId: z.string().describe('ID of the attachment to delete'),
-      },
-      async (params) => {
-        log(`delete_attachment called with: ${JSON.stringify(params)}`);
-        try {
-          await client.deleteAttachment(params.attachmentId);
-          return {
-            content: [{ type: 'text', text: JSON.stringify({ success: true }, null, 2) }],
           };
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Unknown error';

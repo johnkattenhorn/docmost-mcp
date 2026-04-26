@@ -438,7 +438,7 @@ export class DocmostClient {
     });
     form.append('pageId', pageId);
 
-    const response = await this.client.post('/api/attachments/upload-file', form, {
+    const response = await this.client.post('/api/files/upload', form, {
       headers: {
         ...form.getHeaders(),
         'Cookie': this.authToken ? `authToken=${this.authToken}` : '',
@@ -449,20 +449,12 @@ export class DocmostClient {
   }
 
   /**
-   * List attachments for a page
-   * @param pageId - ID of the page
+   * Get attachment info by ID
+   * @param attachmentId - ID of the attachment
    */
-  async listAttachments(pageId: string): Promise<any[]> {
-    const response = await this.client.post('/api/attachments/', { pageId });
+  async getAttachmentInfo(attachmentId: string): Promise<any> {
+    const response = await this.client.post('/api/files/info', { attachmentId });
     return response.data;
-  }
-
-  /**
-   * Delete an attachment
-   * @param attachmentId - ID of the attachment to delete
-   */
-  async deleteAttachment(attachmentId: string): Promise<void> {
-    await this.client.post('/api/attachments/delete', { attachmentId });
   }
 
   /**
@@ -481,6 +473,7 @@ export class DocmostClient {
     const response = await this.client.post('/api/pages/update', {
       pageId,
       content,
+      format: 'json',
     });
     return response.data;
   }
