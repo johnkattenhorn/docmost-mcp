@@ -37,18 +37,21 @@ A Model Context Protocol (MCP) server that connects AI assistants (like Claude, 
 | `docmost_import_page` | Import page from markdown/HTML |
 | `docmost_export_page` | Export page as HTML/Markdown/PDF |
 
-### Attachment Tools
+### Attachment & Embedding Tools
 | Tool | Description |
 |------|-------------|
 | `docmost_upload_attachment` | Upload image/file to a page |
 | `docmost_get_attachment_info` | Get attachment metadata by ID |
 | `docmost_embed_image` | Upload and insert image in one operation |
+| `docmost_embed_from_cdn` | Embed image from CDN URL (link or transfer modes) |
 
 ### Diagram Tools
 | Tool | Description |
 |------|-------------|
-| `docmost_insert_drawio_block` | Insert native Draw.io diagram (editable in Docmost) |
-| `docmost_insert_excalidraw_block` | Insert native Excalidraw diagram (editable in Docmost) |
+| `docmost_insert_drawio_block` | Insert native Draw.io diagram from base64 SVG |
+| `docmost_insert_drawio_from_cdn` | Insert Draw.io diagram from CDN URL |
+| `docmost_insert_excalidraw_block` | Insert native Excalidraw diagram from base64 SVG |
+| `docmost_insert_excalidraw_from_cdn` | Insert Excalidraw diagram from CDN URL |
 
 ### Search Tools
 | Tool | Description |
@@ -69,6 +72,38 @@ A Model Context Protocol (MCP) server that connects AI assistants (like Claude, 
 | `docmost_get_workspace` | Get workspace info |
 | `docmost_list_workspace_members` | List workspace members |
 | `docmost_get_current_user` | Get current user info |
+
+## Page Composition Order
+
+Docmost pages are TipTap documents with two flavours of content:
+
+- **Markdown-equivalent nodes** — headings, paragraphs, lists, tables, code blocks,
+  blockquotes. These round-trip cleanly through `docmost_update_page_markdown`.
+- **Native TipTap nodes** — `drawio`, `excalidraw`, and image attachments.
+  These have no markdown equivalent and only exist as structured nodes in the
+  document tree.
+
+When composing a page, build it in this order:
+
+1. **Markdown body first** with `docmost_update_page_markdown` (operation: `replace`).
+2. **Diagram blocks last** via `docmost_insert_drawio_block`, `docmost_insert_drawio_from_cdn`,
+   `docmost_insert_excalidraw_block`, or `docmost_insert_excalidraw_from_cdn`.
+3. **Image embeds anywhere** with `docmost_embed_from_cdn` — these correctly
+   append/prepend to existing content of either kind.
+
+Avoid calling `docmost_update_page_markdown(replace)` *after* you've inserted
+diagram blocks. The replace operation rewrites the page from markdown, and
+since native nodes have no markdown form, they're dropped. Use
+`docmost_update_page_markdown(append)` or `docmost_update_page_markdown(prepend)`
+to add prose around existing diagram blocks without losing them.
+
+For documents that mix prose and diagrams, the cleanest workflow is:
+
+1. Build out the markdown body (`replace`).
+2. `prepend` any header/title images.
+3. `append` diagram blocks at the end, in order.
+4. Use `append` operations on `update_page_markdown` to add explanatory prose
+   between or after diagram blocks.
 
 ## Setup
 
