@@ -6,14 +6,37 @@
 
 A Model Context Protocol (MCP) server that connects AI assistants (like Claude, Cursor, etc.) to standard Docmost instances.
 
-## Installation
+## Quick Start
 
 ```bash
-# npm
+# Set environment variables
+export DOCMOST_URL=https://your-docmost-instance.com
+export DOCMOST_EMAIL=your-email@example.com
+export DOCMOST_PASSWORD=your-password
+
+# Run with npx
+npx @johnkattenhorn/docmost-mcp
+```
+
+## Installation
+
+### From npm (recommended)
+
+```bash
+# Install globally
 npm install -g @johnkattenhorn/docmost-mcp
 
-# or run directly with npx
+# Or run directly without installing
 npx @johnkattenhorn/docmost-mcp
+```
+
+### From source
+
+```bash
+git clone https://github.com/johnkattenhorn/docmost-mcp.git
+cd docmost-mcp
+pnpm install
+pnpm run build
 ```
 
 ## Features
@@ -157,14 +180,16 @@ docker compose up -d
 
 ## Usage with Claude Code
 
-Add to your Claude Code MCP configuration (`~/.claude.json` or settings):
+Add to your Claude Code MCP configuration (`~/.claude.json` or project settings):
+
+### Using npx (recommended)
 
 ```json
 {
   "mcpServers": {
     "docmost": {
-      "command": "node",
-      "args": ["/path/to/docmost-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["@johnkattenhorn/docmost-mcp"],
       "env": {
         "DOCMOST_URL": "https://your-docmost-instance.com",
         "DOCMOST_EMAIL": "your-email@example.com",
@@ -175,7 +200,25 @@ Add to your Claude Code MCP configuration (`~/.claude.json` or settings):
 }
 ```
 
-Or with Docker:
+### Using global install
+
+```json
+{
+  "mcpServers": {
+    "docmost": {
+      "command": "docmost-mcp",
+      "args": [],
+      "env": {
+        "DOCMOST_URL": "https://your-docmost-instance.com",
+        "DOCMOST_EMAIL": "your-email@example.com",
+        "DOCMOST_PASSWORD": "your-password"
+      }
+    }
+  }
+}
+```
+
+### Using Docker
 
 ```json
 {
@@ -188,6 +231,16 @@ Or with Docker:
   }
 }
 ```
+
+## Usage with Claude.ai
+
+For Claude.ai remote MCP connections, configure the server URL:
+
+```
+https://your-server:3000/mcp
+```
+
+Set `MCP_TRANSPORT=http` and `MCP_PORT=3000` environment variables when running the server.
 
 ## Local Development
 
