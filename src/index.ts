@@ -771,15 +771,16 @@ function buildServer(client: DocmostClient): McpServer {
 
     server.tool(
       'docmost_embed_from_cdn',
-      'Embed an image from a CDN URL into a page. No file upload needed - the CDN URL is embedded directly as markdown. Use this after uploading to CDN via cdn.upload_asset.',
+      'Embed an image from a CDN URL into a page. Two modes: (1) transfer=false (default): embeds CDN URL directly - fast but requires CDN access. (2) transfer=true: downloads from CDN and uploads to Docmost as attachment - image stored in Docmost, independent of CDN.',
       {
         pageId: z.string().describe('ID of the page'),
         cdnUrl: z.string().url().describe('Full CDN URL (e.g., https://cdn.khn.family/keep/diagram.png)'),
         altText: z.string().optional().describe('Alt text for the image'),
         position: z.enum(['append', 'prepend']).optional().describe('Where to insert (default: append)'),
+        transfer: z.boolean().optional().describe('If true, download from CDN and upload to Docmost as attachment. If false (default), just link to CDN URL.'),
       },
       async (params) => {
-        log(`embed_from_cdn called with: pageId=${params.pageId}, cdnUrl=${params.cdnUrl}`);
+        log(`embed_from_cdn called with: pageId=${params.pageId}, cdnUrl=${params.cdnUrl}, transfer=${params.transfer}`);
         try {
           // Validate URL is from trusted CDN domains
           const trustedDomains = [
@@ -793,9 +794,55 @@ function buildServer(client: DocmostClient): McpServer {
             throw new Error(`URL must be from a trusted CDN domain: ${trustedDomains.join(', ')}`);
           }
 
-          // Build markdown image
-          const markdown = buildMarkdownImage(params.cdnUrl, params.altText);
           const position = params.position || 'append';
+          let finalUrl = params.cdnUrl;
+          let attachmentId: string | undefined;
+
+          if (params.transfer) {
+            // Transfer mode: download from CDN and upload to Docmost
+            log(`Transferring image from CDN to Docmost...`);
+
+            // Fetch image from CDN
+            const axios = (await import('axios')).default;
+            const response = await axios.get(params.cdnUrl, {
+              responseType: 'arraybuffer',
+              timeout: 30000,
+            });
+
+            // Convert to base64
+            const base64Data = Buffer.from(response.data).toString('base64');
+
+            // Extract filename from URL
+            const pathParts = url.pathname.split('/');
+            const fileName = pathParts[pathParts.length - 1] || 'image.png';
+
+            // Detect mime type from extension
+            const ext = fileName.split('.').pop()?.toLowerCase();
+            const mimeTypes: Record<string, string> = {
+              'png': 'image/png',
+              'jpg': 'image/jpeg',
+              'jpeg': 'image/jpeg',
+              'gif': 'image/gif',
+              'webp': 'image/webp',
+              'svg': 'image/svg+xml',
+            };
+            const mimeType = mimeTypes[ext || ''] || 'image/png';
+
+            // Upload to Docmost as attachment
+            const attachment = await client.uploadAttachment(
+              params.pageId,
+              fileName,
+              base64Data,
+              mimeType
+            );
+
+            attachmentId = attachment.id;
+            finalUrl = buildAttachmentUrl(attachment.id, attachment.fileName);
+            log(`Uploaded as attachment: ${attachmentId}`);
+          }
+
+          // Build markdown image
+          const markdown = buildMarkdownImage(finalUrl, params.altText);
 
           // Update page with markdown image
           await client.updatePageMarkdown({
@@ -809,6 +856,9 @@ function buildServer(client: DocmostClient): McpServer {
               type: 'text',
               text: JSON.stringify({
                 cdnUrl: params.cdnUrl,
+                finalUrl,
+                attachmentId,
+                transferred: !!params.transfer,
                 pageUpdated: true,
                 position,
                 markdownInserted: markdown,
