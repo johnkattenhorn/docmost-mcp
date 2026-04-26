@@ -1004,6 +1004,154 @@ function buildServer(client: DocmostClient): McpServer {
     );
 
     server.tool(
+      'docmost_insert_drawio_from_cdn',
+      'Insert a Draw.io diagram from a CDN URL. Downloads the SVG server-side, uploads as attachment, and inserts a native drawio block.',
+      {
+        pageId: z.string().describe('ID of the page'),
+        spaceId: z.string().describe('ID of the space containing the page'),
+        cdnUrl: z.string().url().describe('CDN URL to the .drawio.svg file'),
+        fileName: z.string().optional().describe('Filename (default: extracted from URL)'),
+        position: z.enum(['append', 'prepend']).optional().describe('Where to insert (default: append)'),
+      },
+      async (params) => {
+        log(`insert_drawio_from_cdn called with: pageId=${params.pageId}, cdnUrl=${params.cdnUrl}`);
+        try {
+          const position = params.position || 'append';
+
+          // 1. Download SVG from CDN
+          const axios = (await import('axios')).default;
+          const response = await axios.get(params.cdnUrl, {
+            responseType: 'arraybuffer',
+            timeout: 30000,
+          });
+
+          // 2. Convert to base64
+          const base64Data = Buffer.from(response.data).toString('base64');
+
+          // 3. Extract filename from URL or use provided
+          const url = new URL(params.cdnUrl);
+          const pathParts = url.pathname.split('/');
+          const fileName = params.fileName || pathParts[pathParts.length - 1] || 'diagram.drawio.svg';
+
+          // 4. Upload as attachment
+          const attachment = await client.uploadAttachment(
+            params.pageId,
+            fileName,
+            base64Data,
+            'image/svg+xml'
+          );
+
+          const attachmentUrl = buildAttachmentUrl(attachment.id, attachment.fileName);
+
+          // 5. Build the drawio node
+          const drawioNode = buildDrawioNode(attachment.id, attachmentUrl, fileName, 'center');
+
+          // 6. Get current page content
+          const currentContent = await client.getPageContent(params.pageId, params.spaceId);
+
+          // 7. Insert node at position
+          const newContent = position === 'prepend'
+            ? prependNodeToDocument(currentContent, drawioNode)
+            : appendNodeToDocument(currentContent, drawioNode);
+
+          // 8. Update page with new content
+          await client.updatePageContent(params.pageId, newContent);
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                cdnUrl: params.cdnUrl,
+                attachmentId: attachment.id,
+                attachmentUrl,
+                nodeType: 'drawio',
+                inserted: true,
+                position,
+              }, null, 2)
+            }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
+      'docmost_insert_excalidraw_from_cdn',
+      'Insert an Excalidraw diagram from a CDN URL. Downloads the SVG server-side, uploads as attachment, and inserts a native excalidraw block.',
+      {
+        pageId: z.string().describe('ID of the page'),
+        spaceId: z.string().describe('ID of the space containing the page'),
+        cdnUrl: z.string().url().describe('CDN URL to the .excalidraw.svg file'),
+        fileName: z.string().optional().describe('Filename (default: extracted from URL)'),
+        position: z.enum(['append', 'prepend']).optional().describe('Where to insert (default: append)'),
+      },
+      async (params) => {
+        log(`insert_excalidraw_from_cdn called with: pageId=${params.pageId}, cdnUrl=${params.cdnUrl}`);
+        try {
+          const position = params.position || 'append';
+
+          // 1. Download SVG from CDN
+          const axios = (await import('axios')).default;
+          const response = await axios.get(params.cdnUrl, {
+            responseType: 'arraybuffer',
+            timeout: 30000,
+          });
+
+          // 2. Convert to base64
+          const base64Data = Buffer.from(response.data).toString('base64');
+
+          // 3. Extract filename from URL or use provided
+          const url = new URL(params.cdnUrl);
+          const pathParts = url.pathname.split('/');
+          const fileName = params.fileName || pathParts[pathParts.length - 1] || 'sketch.excalidraw.svg';
+
+          // 4. Upload as attachment
+          const attachment = await client.uploadAttachment(
+            params.pageId,
+            fileName,
+            base64Data,
+            'image/svg+xml'
+          );
+
+          const attachmentUrl = buildAttachmentUrl(attachment.id, attachment.fileName);
+
+          // 5. Build the excalidraw node
+          const excalidrawNode = buildExcalidrawNode(attachment.id, attachmentUrl, fileName, 'center');
+
+          // 6. Get current page content
+          const currentContent = await client.getPageContent(params.pageId, params.spaceId);
+
+          // 7. Insert node at position
+          const newContent = position === 'prepend'
+            ? prependNodeToDocument(currentContent, excalidrawNode)
+            : appendNodeToDocument(currentContent, excalidrawNode);
+
+          // 8. Update page with new content
+          await client.updatePageContent(params.pageId, newContent);
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                cdnUrl: params.cdnUrl,
+                attachmentId: attachment.id,
+                attachmentUrl,
+                nodeType: 'excalidraw',
+                inserted: true,
+                position,
+              }, null, 2)
+            }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
       'docmost_move_page_to_parent',
       'Move an existing page to a different parent page or to root level. Uses /api/pages/move endpoint.',
       {
