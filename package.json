@@ -1,14 +1,47 @@
 {
-  "name": "docmost-mcp-server",
+  "name": "docmost-mcp",
   "version": "1.0.0",
   "description": "MCP server for Docmost - connects AI assistants to standard Docmost instances",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "docmost-mcp": "dist/bootstrap.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/bootstrap.js",
-    "dev": "tsx watch src/bootstrap.ts"
+    "dev": "tsx watch src/bootstrap.ts",
+    "prepublishOnly": "npm run build"
   },
+  "keywords": [
+    "mcp",
+    "docmost",
+    "claude",
+    "ai",
+    "model-context-protocol",
+    "wiki",
+    "documentation",
+    "anthropic"
+  ],
+  "author": "John Kattenhorn <john@khn.family>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/johnkattenhorn/docmost-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/johnkattenhorn/docmost-mcp/issues"
+  },
+  "homepage": "https://github.com/johnkattenhorn/docmost-mcp#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.1",
     "@opentelemetry/api": "^1.9.0",
