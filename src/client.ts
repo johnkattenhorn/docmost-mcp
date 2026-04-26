@@ -324,8 +324,15 @@ export class DocmostClient {
   /**
    * Import a page with markdown or HTML content
    * This properly initializes the page content so it shows up in the UI
+   * @param parentPageId - Optional parent page ID for creating nested pages
    */
-  async importPage(spaceId: string, title: string, content: string, format: 'markdown' | 'html' = 'markdown'): Promise<any> {
+  async importPage(
+    spaceId: string,
+    title: string,
+    content: string,
+    format: 'markdown' | 'html' = 'markdown',
+    parentPageId?: string
+  ): Promise<any> {
     const FormData = (await import('form-data')).default;
     const form = new FormData();
 
@@ -351,6 +358,9 @@ export class DocmostClient {
       contentType: format === 'markdown' ? 'text/markdown' : 'text/html',
     });
     form.append('spaceId', spaceId);
+    if (parentPageId) {
+      form.append('parentPageId', parentPageId);
+    }
 
     const response = await this.client.post('/api/pages/import', form, {
       headers: {
@@ -359,6 +369,30 @@ export class DocmostClient {
       },
     });
 
+    return response.data;
+  }
+
+  /**
+   * Update a page's content using markdown format while preserving the page ID.
+   * Uses the /api/pages/update endpoint with format: "markdown" parameter.
+   * @param pageId - ID of the page to update
+   * @param content - New content in markdown format
+   * @param title - Optional new title
+   * @param operation - How to apply the content: "replace" (default), "append", or "prepend"
+   */
+  async updatePageMarkdown(data: {
+    pageId: string;
+    content: string;
+    title?: string;
+    operation?: 'replace' | 'append' | 'prepend';
+  }): Promise<any> {
+    const response = await this.client.post('/api/pages/update', {
+      pageId: data.pageId,
+      content: data.content,
+      title: data.title,
+      format: 'markdown',
+      operation: data.operation || 'replace',
+    });
     return response.data;
   }
 }

@@ -228,17 +228,24 @@ function buildServer(client: DocmostClient): McpServer {
 
     server.tool(
       'docmost_create_page',
-      'Create a new page in a space',
+      'Create a new page with markdown content. Supports nested pages via parentPageId.',
       {
         title: z.string().describe('Title of the page'),
         spaceId: z.string().describe('ID of the space to create the page in'),
         parentPageId: z.string().optional().describe('ID of the parent page (for nested pages)'),
-        content: z.any().optional().describe('Page content in TipTap JSON format'),
+        content: z.string().optional().describe('Page content in Markdown format'),
       },
       async (params) => {
         log(`create_page called with: ${JSON.stringify(params)}`);
         try {
-          const result = await client.createPage(params);
+          // Use import endpoint for markdown content with hierarchy support
+          const result = await client.importPage(
+            params.spaceId,
+            params.title,
+            params.content || '',
+            'markdown',
+            params.parentPageId
+          );
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -251,11 +258,10 @@ function buildServer(client: DocmostClient): McpServer {
 
     server.tool(
       'docmost_update_page',
-      'Update an existing page',
+      'Update page metadata (title, icon, cover). For content updates, use docmost_update_page_markdown.',
       {
         pageId: z.string().describe('ID of the page to update'),
         title: z.string().optional().describe('New title for the page'),
-        content: z.any().optional().describe('New content in TipTap JSON format'),
         icon: z.string().optional().describe('Page icon (emoji)'),
         coverPhoto: z.string().optional().describe('Cover photo URL'),
       },
@@ -275,50 +281,33 @@ function buildServer(client: DocmostClient): McpServer {
 
     server.tool(
       'docmost_update_page_markdown',
-      'Update an existing page using Markdown content. NOTE: Due to Docmost API limitations, this replaces the page (deletes and recreates) which changes the page ID. Use docmost_update_page for metadata-only updates.',
+      'Update an existing page using Markdown content. This preserves the page ID by using the native markdown update API.',
       {
         pageId: z.string().describe('ID of the page to update'),
-        spaceId: z.string().describe('ID of the space containing the page'),
-        title: z.string().optional().describe('New title for the page (uses existing if not provided)'),
+        title: z.string().optional().describe('New title for the page'),
         content: z.string().describe('New content in Markdown format'),
+        operation: z.enum(['replace', 'append', 'prepend']).optional().describe('How to apply the content: replace (default), append, or prepend'),
       },
       async (params) => {
         log(`update_page_markdown called with: ${JSON.stringify(params)}`);
         try {
-          // Step 1: Get existing page info to preserve metadata
-          log(`Fetching existing page info for ${params.pageId}`);
-          const existingPage = await client.getPage(params.pageId, params.spaceId);
+          const result = await client.updatePageMarkdown({
+            pageId: params.pageId,
+            content: params.content,
+            title: params.title,
+            operation: params.operation,
+          });
 
-          if (!existingPage) {
-            throw new Error(`Page ${params.pageId} not found`);
-          }
-
-          const pageTitle = params.title || existingPage.title || 'Untitled';
-          log(`Using title: ${pageTitle}`);
-
-          // Step 2: Delete the existing page
-          log(`Deleting existing page ${params.pageId}`);
-          await client.deletePage(params.pageId);
-
-          // Step 3: Create new page with updated content using import endpoint
-          log(`Creating new page with content via import`);
-          const result = await client.importPage(
-            params.spaceId,
-            pageTitle,
-            params.content,
-            'markdown'
-          );
-
-          log(`Page replaced successfully. New page ID: ${result?.id || 'unknown'}`);
+          log(`Page updated successfully. Page ID preserved: ${params.pageId}`);
 
           return {
             content: [{
               type: 'text',
               text: JSON.stringify({
                 success: true,
-                message: 'Page content updated (page was replaced with new ID)',
-                oldPageId: params.pageId,
-                newPage: result
+                message: 'Page content updated (page ID preserved)',
+                pageId: params.pageId,
+                result
               }, null, 2)
             }],
           };
@@ -599,12 +588,13 @@ function buildServer(client: DocmostClient): McpServer {
 
     server.tool(
       'docmost_import_page',
-      'Import/create a page with markdown or HTML content. This is the recommended way to create pages with content.',
+      'Create a page with markdown or HTML content. Similar to docmost_create_page but also supports HTML format. Use docmost_create_page for markdown-only workflows.',
       {
         spaceId: z.string().describe('ID of the space to create the page in'),
         title: z.string().describe('Title of the page'),
         content: z.string().describe('Page content in markdown or HTML format'),
         format: z.enum(['markdown', 'html']).optional().describe('Content format (default: markdown)'),
+        parentPageId: z.string().optional().describe('ID of the parent page for creating nested/child pages'),
       },
       async (params) => {
         log(`import_page called with: ${JSON.stringify(params)}`);
@@ -613,8 +603,42 @@ function buildServer(client: DocmostClient): McpServer {
             params.spaceId,
             params.title,
             params.content,
-            params.format || 'markdown'
+            params.format || 'markdown',
+            params.parentPageId
           );
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
+      'docmost_move_page',
+      'Move a page to a new position in the page tree. Use to reorder pages or change parent.',
+      {
+        pageId: z.string().describe('ID of the page to move'),
+        position: z.string().describe('New position string (5-12 characters, e.g., "a00001")'),
+        after: z.string().optional().describe('ID of the page to place this page after'),
+        before: z.string().optional().describe('ID of the page to place this page before'),
+      },
+      async (params) => {
+        log(`move_page called with: ${JSON.stringify(params)}`);
+        try {
+          // Validate position string length (Docmost requires 5-12 characters)
+          if (params.position.length < 5 || params.position.length > 12) {
+            throw new Error('Position string must be 5-12 characters long');
+          }
+
+          const result = await client.movePage({
+            pageId: params.pageId,
+            position: params.position,
+            after: params.after,
+            before: params.before,
+          });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
