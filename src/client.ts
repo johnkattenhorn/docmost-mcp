@@ -482,11 +482,19 @@ export class DocmostClient {
     const page = await this.getPage(pageId, spaceId);
     let content = page.content;
 
+    // DEBUG: Log raw content from API
+    console.error(`[DEBUG getPageContent] pageId=${pageId}`);
+    console.error(`[DEBUG getPageContent] raw content type: ${typeof content}`);
+    console.error(`[DEBUG getPageContent] raw content: ${JSON.stringify(content)?.substring(0, 500)}`);
+
     // Handle string content (parse JSON if needed)
     if (typeof content === 'string') {
+      console.error(`[DEBUG getPageContent] content is string, attempting JSON.parse`);
       try {
         content = JSON.parse(content);
+        console.error(`[DEBUG getPageContent] parsed successfully`);
       } catch {
+        console.error(`[DEBUG getPageContent] parse failed, wrapping as paragraph`);
         // If it's not valid JSON, wrap as a text paragraph
         content = {
           type: 'doc',
@@ -497,19 +505,23 @@ export class DocmostClient {
 
     // Handle null/undefined content (empty page)
     if (!content) {
+      console.error(`[DEBUG getPageContent] content is null/undefined, returning empty doc`);
       return { type: 'doc', content: [] };
     }
 
     // Handle content that's missing the doc wrapper (rare but possible)
     if (Array.isArray(content)) {
+      console.error(`[DEBUG getPageContent] content is array, wrapping in doc`);
       return { type: 'doc', content };
     }
 
     // Handle content that's a valid TipTap doc but missing content array
     if (content.type === 'doc' && !content.content) {
+      console.error(`[DEBUG getPageContent] doc has no content array, returning empty`);
       return { type: 'doc', content: [] };
     }
 
+    console.error(`[DEBUG getPageContent] returning normalized content with ${content.content?.length || 0} nodes`);
     return content;
   }
 
