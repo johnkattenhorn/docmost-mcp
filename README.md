@@ -41,8 +41,7 @@ A Model Context Protocol (MCP) server that connects AI assistants (like Claude, 
 | Tool | Description |
 |------|-------------|
 | `docmost_upload_attachment` | Upload image/file to a page |
-| `docmost_list_attachments` | List all attachments on a page |
-| `docmost_delete_attachment` | Delete an attachment |
+| `docmost_get_attachment_info` | Get attachment metadata by ID |
 | `docmost_embed_image` | Upload and insert image in one operation |
 
 ### Diagram Tools
