@@ -770,6 +770,59 @@ function buildServer(client: DocmostClient): McpServer {
     );
 
     server.tool(
+      'docmost_embed_from_cdn',
+      'Embed an image from a CDN URL into a page. No file upload needed - the CDN URL is embedded directly as markdown. Use this after uploading to CDN via cdn.upload_asset.',
+      {
+        pageId: z.string().describe('ID of the page'),
+        cdnUrl: z.string().url().describe('Full CDN URL (e.g., https://cdn.khn.family/keep/diagram.png)'),
+        altText: z.string().optional().describe('Alt text for the image'),
+        position: z.enum(['append', 'prepend']).optional().describe('Where to insert (default: append)'),
+      },
+      async (params) => {
+        log(`embed_from_cdn called with: pageId=${params.pageId}, cdnUrl=${params.cdnUrl}`);
+        try {
+          // Validate URL is from trusted CDN domains
+          const trustedDomains = [
+            'cdn.khn.family',
+            'cdn.the-hourglass-project.com',
+            'cdn.komputa.io',
+          ];
+
+          const url = new URL(params.cdnUrl);
+          if (!trustedDomains.includes(url.hostname)) {
+            throw new Error(`URL must be from a trusted CDN domain: ${trustedDomains.join(', ')}`);
+          }
+
+          // Build markdown image
+          const markdown = buildMarkdownImage(params.cdnUrl, params.altText);
+          const position = params.position || 'append';
+
+          // Update page with markdown image
+          await client.updatePageMarkdown({
+            pageId: params.pageId,
+            content: markdown,
+            operation: position,
+          });
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                cdnUrl: params.cdnUrl,
+                pageUpdated: true,
+                position,
+                markdownInserted: markdown,
+              }, null, 2)
+            }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
       'docmost_insert_drawio_block',
       'Insert a Draw.io diagram block into a page (enables native editing in Docmost)',
       {
