@@ -107,26 +107,32 @@ For documents that mix prose and diagrams, the cleanest workflow is:
 
 ## Setup
 
-### 1. Get Authentication Token
+### 1. Authentication
 
-You need to get the `authToken` cookie from your Docmost session:
+You can authenticate using either email/password or an auth token:
 
+**Option A: Email/Password (recommended)**
+```bash
+DOCMOST_URL=https://your-docmost-instance.com
+DOCMOST_EMAIL=your-email@example.com
+DOCMOST_PASSWORD=your-password
+```
+
+**Option B: Auth Token**
 1. Log into your Docmost instance in a browser
-2. Open Developer Tools (F12)
-3. Go to Application > Cookies
-4. Find the `authToken` cookie and copy its value
+2. Open Developer Tools (F12) → Application → Cookies
+3. Copy the `authToken` cookie value
+
+```bash
+DOCMOST_URL=https://your-docmost-instance.com
+DOCMOST_AUTH_TOKEN=your_auth_token_here
+```
 
 ### 2. Create Environment File
 
 ```bash
 cp .env.example .env
-```
-
-Edit `.env`:
-
-```bash
-DOCMOST_URL=https://docmost.khn.family
-DOCMOST_AUTH_TOKEN=your_auth_token_here
+# Edit .env with your credentials
 ```
 
 ### 3. Run with Docker
@@ -137,32 +143,33 @@ docker compose up -d
 
 ## Usage with Claude Code
 
-Add to your Claude Code MCP configuration (`~/.claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "docmost": {
-      "command": "docker",
-      "args": ["exec", "-i", "docmost-mcp-server", "node", "dist/index.js"],
-      "env": {}
-    }
-  }
-}
-```
-
-Or run locally:
+Add to your Claude Code MCP configuration (`~/.claude.json` or settings):
 
 ```json
 {
   "mcpServers": {
     "docmost": {
       "command": "node",
-      "args": ["/path/to/docmost-mcp-server/dist/index.js"],
+      "args": ["/path/to/docmost-mcp/dist/index.js"],
       "env": {
-        "DOCMOST_URL": "https://docmost.khn.family",
-        "DOCMOST_AUTH_TOKEN": "your_token"
+        "DOCMOST_URL": "https://your-docmost-instance.com",
+        "DOCMOST_EMAIL": "your-email@example.com",
+        "DOCMOST_PASSWORD": "your-password"
       }
+    }
+  }
+}
+```
+
+Or with Docker:
+
+```json
+{
+  "mcpServers": {
+    "docmost": {
+      "command": "docker",
+      "args": ["exec", "-i", "docmost-mcp", "node", "dist/index.js"],
+      "env": {}
     }
   }
 }
