@@ -178,9 +178,15 @@ export class DocmostClient {
     title: string;
     spaceId: string;
     parentPageId?: string;
-    content?: any;
+    content?: string;
+    format?: 'json' | 'markdown' | 'html';
   }): Promise<any> {
-    const response = await this.client.post('/api/pages/create', data);
+    // Default to markdown format when content is provided
+    const payload = {
+      ...data,
+      format: data.format || (data.content ? 'markdown' : undefined),
+    };
+    const response = await this.client.post('/api/pages/create', payload);
     return response.data;
   }
 
