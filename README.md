@@ -1,7 +1,7 @@
 # Docmost MCP Server
 
 [![CI](https://github.com/johnkattenhorn/docmost-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/johnkattenhorn/docmost-mcp/actions/workflows/ci.yml)
-[![npm version](https://badge.fury.io/js/docmost-mcp.svg)](https://www.npmjs.com/package/docmost-mcp)
+[![npm version](https://badge.fury.io/js/@johnkattenhorn/docmost-mcp.svg)](https://www.npmjs.com/package/@johnkattenhorn/docmost-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A Model Context Protocol (MCP) server that connects AI assistants (like Claude, Cursor, etc.) to standard Docmost instances.
@@ -10,10 +10,10 @@ A Model Context Protocol (MCP) server that connects AI assistants (like Claude, 
 
 ```bash
 # npm
-npm install -g docmost-mcp
+npm install -g @johnkattenhorn/docmost-mcp
 
 # or run directly with npx
-npx docmost-mcp
+npx @johnkattenhorn/docmost-mcp
 ```
 
 ## Features

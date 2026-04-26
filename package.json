@@ -1,5 +1,5 @@
 {
-  "name": "docmost-mcp",
+  "name": "@johnkattenhorn/docmost-mcp",
   "version": "1.0.0",
   "description": "MCP server for Docmost - connects AI assistants to standard Docmost instances",
   "type": "module",
