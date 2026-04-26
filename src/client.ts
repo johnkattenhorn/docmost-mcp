@@ -262,12 +262,22 @@ export class DocmostClient {
   }
 
   async createComment(data: { pageId: string; content: any; parentCommentId?: string }): Promise<any> {
-    const response = await this.client.post('/api/comments/create', data);
+    // Docmost API expects content as a JSON string, not an object
+    const payload = {
+      ...data,
+      content: typeof data.content === 'string' ? data.content : JSON.stringify(data.content),
+    };
+    const response = await this.client.post('/api/comments/create', payload);
     return response.data;
   }
 
   async updateComment(data: { commentId: string; content: any }): Promise<any> {
-    const response = await this.client.post('/api/comments/update', data);
+    // Docmost API expects content as a JSON string, not an object
+    const payload = {
+      ...data,
+      content: typeof data.content === 'string' ? data.content : JSON.stringify(data.content),
+    };
+    const response = await this.client.post('/api/comments/update', payload);
     return response.data;
   }
 
