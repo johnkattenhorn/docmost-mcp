@@ -18,6 +18,15 @@ import { z } from 'zod';
 import { config as dotenvConfig } from 'dotenv';
 import { DocmostClient } from './client.js';
 import { markdownToTipTapJSON, htmlToTipTapJSON } from './markdown-converter.js';
+import {
+  buildDrawioNode,
+  buildExcalidrawNode,
+  buildImageNode,
+  buildAttachmentUrl,
+  buildMarkdownImage,
+  appendNodeToDocument,
+  prependNodeToDocument,
+} from './tiptap-helpers.js';
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { randomUUID } from 'crypto';
 import { logger } from './utils/observability.js';
@@ -641,6 +650,328 @@ function buildServer(client: DocmostClient): McpServer {
           });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    // ==================== ATTACHMENT TOOLS ====================
+
+    server.tool(
+      'docmost_upload_attachment',
+      'Upload an image or file to a Docmost page. Returns attachment URL for embedding.',
+      {
+        pageId: z.string().describe('ID of the page to attach to'),
+        fileName: z.string().describe('Filename with extension (e.g., diagram.png)'),
+        fileData: z.string().describe('Base64-encoded file content'),
+        mimeType: z.string().optional().describe('MIME type (auto-detected if omitted)'),
+      },
+      async (params) => {
+        log(`upload_attachment called with: pageId=${params.pageId}, fileName=${params.fileName}`);
+        try {
+          const result = await client.uploadAttachment(
+            params.pageId,
+            params.fileName,
+            params.fileData,
+            params.mimeType
+          );
+
+          const url = buildAttachmentUrl(result.id, result.fileName);
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                id: result.id,
+                fileName: result.fileName,
+                fileSize: result.fileSize,
+                mimeType: result.mimeType,
+                url,
+              }, null, 2)
+            }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
+      'docmost_list_attachments',
+      'List all attachments on a page',
+      {
+        pageId: z.string().describe('ID of the page'),
+      },
+      async (params) => {
+        log(`list_attachments called with: ${JSON.stringify(params)}`);
+        try {
+          const result = await client.listAttachments(params.pageId);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
+      'docmost_delete_attachment',
+      'Delete an attachment from a page',
+      {
+        attachmentId: z.string().describe('ID of the attachment to delete'),
+      },
+      async (params) => {
+        log(`delete_attachment called with: ${JSON.stringify(params)}`);
+        try {
+          await client.deleteAttachment(params.attachmentId);
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ success: true }, null, 2) }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
+      'docmost_embed_image',
+      'Upload an image and append/insert it into page content in one operation.',
+      {
+        pageId: z.string().describe('ID of the page'),
+        fileName: z.string().describe('Filename with extension (e.g., diagram.png)'),
+        fileData: z.string().describe('Base64-encoded file content'),
+        altText: z.string().optional().describe('Alt text for the image'),
+        position: z.enum(['append', 'prepend']).optional().describe('Where to insert (default: append)'),
+      },
+      async (params) => {
+        log(`embed_image called with: pageId=${params.pageId}, fileName=${params.fileName}`);
+        try {
+          // 1. Upload attachment
+          const attachment = await client.uploadAttachment(
+            params.pageId,
+            params.fileName,
+            params.fileData
+          );
+
+          const url = buildAttachmentUrl(attachment.id, attachment.fileName);
+          const markdown = buildMarkdownImage(url, params.altText);
+          const position = params.position || 'append';
+
+          // 2. Update page with markdown image
+          await client.updatePageMarkdown({
+            pageId: params.pageId,
+            content: markdown,
+            operation: position,
+          });
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                attachmentId: attachment.id,
+                url,
+                pageUpdated: true,
+                position,
+              }, null, 2)
+            }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
+      'docmost_insert_drawio_block',
+      'Insert a Draw.io diagram block into a page (enables native editing in Docmost)',
+      {
+        pageId: z.string().describe('ID of the page'),
+        spaceId: z.string().describe('ID of the space containing the page'),
+        diagramData: z.string().describe('.drawio XML content or SVG (base64 encoded)'),
+        fileName: z.string().optional().describe('Filename (default: diagram.drawio.svg)'),
+        position: z.enum(['append', 'prepend']).optional().describe('Where to insert (default: append)'),
+      },
+      async (params) => {
+        log(`insert_drawio_block called with: pageId=${params.pageId}`);
+        try {
+          const fileName = params.fileName || 'diagram.drawio.svg';
+          const position = params.position || 'append';
+
+          // 1. Upload the diagram file as attachment
+          const attachment = await client.uploadAttachment(
+            params.pageId,
+            fileName,
+            params.diagramData,
+            'image/svg+xml'
+          );
+
+          const url = buildAttachmentUrl(attachment.id, attachment.fileName);
+
+          // 2. Build the drawio node
+          const drawioNode = buildDrawioNode(attachment.id, url, fileName, 'center');
+
+          // 3. Get current page content
+          const currentContent = await client.getPageContent(params.pageId, params.spaceId);
+
+          // 4. Insert node at position
+          const newContent = position === 'prepend'
+            ? prependNodeToDocument(currentContent, drawioNode)
+            : appendNodeToDocument(currentContent, drawioNode);
+
+          // 5. Update page with new content
+          await client.updatePageContent(params.pageId, newContent);
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                attachmentId: attachment.id,
+                nodeType: 'drawio',
+                inserted: true,
+                position,
+              }, null, 2)
+            }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
+      'docmost_insert_excalidraw_block',
+      'Insert an Excalidraw diagram block into a page',
+      {
+        pageId: z.string().describe('ID of the page'),
+        spaceId: z.string().describe('ID of the space containing the page'),
+        diagramData: z.string().describe('Excalidraw JSON or SVG export (base64 encoded)'),
+        fileName: z.string().optional().describe('Filename (default: sketch.excalidraw.svg)'),
+        position: z.enum(['append', 'prepend']).optional().describe('Where to insert (default: append)'),
+      },
+      async (params) => {
+        log(`insert_excalidraw_block called with: pageId=${params.pageId}`);
+        try {
+          const fileName = params.fileName || 'sketch.excalidraw.svg';
+          const position = params.position || 'append';
+
+          // 1. Upload the diagram file as attachment
+          const attachment = await client.uploadAttachment(
+            params.pageId,
+            fileName,
+            params.diagramData,
+            'image/svg+xml'
+          );
+
+          const url = buildAttachmentUrl(attachment.id, attachment.fileName);
+
+          // 2. Build the excalidraw node
+          const excalidrawNode = buildExcalidrawNode(attachment.id, url, fileName, 'center');
+
+          // 3. Get current page content
+          const currentContent = await client.getPageContent(params.pageId, params.spaceId);
+
+          // 4. Insert node at position
+          const newContent = position === 'prepend'
+            ? prependNodeToDocument(currentContent, excalidrawNode)
+            : appendNodeToDocument(currentContent, excalidrawNode);
+
+          // 5. Update page with new content
+          await client.updatePageContent(params.pageId, newContent);
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                attachmentId: attachment.id,
+                nodeType: 'excalidraw',
+                inserted: true,
+                position,
+              }, null, 2)
+            }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
+      'docmost_move_page_to_parent',
+      'Move an existing page to a different parent page or to root level',
+      {
+        pageId: z.string().describe('ID of page to move'),
+        parentPageId: z.string().optional().describe('New parent page ID (omit for root level)'),
+      },
+      async (params) => {
+        log(`move_page_to_parent called with: ${JSON.stringify(params)}`);
+        try {
+          const result = await client.movePageToParent(params.pageId, params.parentPageId || null);
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                pageId: params.pageId,
+                newParentId: params.parentPageId || null,
+                success: true,
+                result,
+              }, null, 2)
+            }],
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Unknown error';
+          return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
+        }
+      }
+    );
+
+    server.tool(
+      'docmost_bulk_create_pages',
+      'Create multiple pages in a single operation',
+      {
+        spaceId: z.string().describe('ID of the space'),
+        pages: z.array(z.object({
+          title: z.string().describe('Page title'),
+          content: z.string().optional().describe('Page content in markdown'),
+          parentPageId: z.string().optional().describe('Parent page ID for nested pages'),
+        })).describe('Array of pages to create'),
+      },
+      async (params) => {
+        log(`bulk_create_pages called with: ${params.pages.length} pages`);
+        try {
+          const created: Array<{ title: string; pageId: string }> = [];
+          const failed: Array<{ title: string; error: string }> = [];
+
+          for (const page of params.pages) {
+            try {
+              const result = await client.importPage(
+                params.spaceId,
+                page.title,
+                page.content || '',
+                'markdown',
+                page.parentPageId
+              );
+              created.push({ title: page.title, pageId: result.id });
+            } catch (error) {
+              const msg = error instanceof Error ? error.message : 'Unknown error';
+              failed.push({ title: page.title, error: msg });
+            }
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ created, failed }, null, 2)
+            }],
           };
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Unknown error';

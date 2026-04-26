@@ -395,4 +395,141 @@ export class DocmostClient {
     });
     return response.data;
   }
+
+  // ==================== ATTACHMENTS ====================
+
+  /**
+   * Upload an attachment to a page
+   * @param pageId - ID of the page to attach to
+   * @param fileName - Name of the file with extension
+   * @param fileData - Base64-encoded file content
+   * @param mimeType - MIME type (auto-detected if omitted)
+   */
+  async uploadAttachment(
+    pageId: string,
+    fileName: string,
+    fileData: string,
+    mimeType?: string
+  ): Promise<{
+    id: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    filePath: string;
+  }> {
+    const FormData = (await import('form-data')).default;
+    const form = new FormData();
+
+    // Decode base64 to buffer
+    const buffer = Buffer.from(fileData, 'base64');
+
+    // Auto-detect MIME type from extension if not provided
+    const detectedMimeType = mimeType || this.getMimeType(fileName);
+
+    form.append('file', buffer, {
+      filename: fileName,
+      contentType: detectedMimeType,
+    });
+    form.append('pageId', pageId);
+
+    const response = await this.client.post('/api/attachments/upload-file', form, {
+      headers: {
+        ...form.getHeaders(),
+        'Cookie': this.authToken ? `authToken=${this.authToken}` : '',
+      },
+    });
+
+    return response.data;
+  }
+
+  /**
+   * List attachments for a page
+   * @param pageId - ID of the page
+   */
+  async listAttachments(pageId: string): Promise<any[]> {
+    const response = await this.client.post('/api/attachments/', { pageId });
+    return response.data;
+  }
+
+  /**
+   * Delete an attachment
+   * @param attachmentId - ID of the attachment to delete
+   */
+  async deleteAttachment(attachmentId: string): Promise<void> {
+    await this.client.post('/api/attachments/delete', { attachmentId });
+  }
+
+  /**
+   * Get page content in TipTap JSON format
+   * Used internally for manipulating page content
+   */
+  async getPageContent(pageId: string, spaceId: string): Promise<any> {
+    const page = await this.getPage(pageId, spaceId);
+    return page.content;
+  }
+
+  /**
+   * Update page with TipTap JSON content directly
+   */
+  async updatePageContent(pageId: string, content: any): Promise<any> {
+    const response = await this.client.post('/api/pages/update', {
+      pageId,
+      content,
+    });
+    return response.data;
+  }
+
+  /**
+   * Move a page to a different parent
+   * @param pageId - ID of the page to move
+   * @param parentPageId - ID of the new parent page (null for root level)
+   */
+  async movePageToParent(pageId: string, parentPageId: string | null): Promise<any> {
+    const response = await this.client.post('/api/pages/update', {
+      pageId,
+      parentPageId: parentPageId || null,
+    });
+    return response.data;
+  }
+
+  /**
+   * Helper to get MIME type from file extension
+   */
+  private getMimeType(fileName: string): string {
+    const ext = fileName.toLowerCase().split('.').pop() || '';
+    const mimeTypes: Record<string, string> = {
+      // Images
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'gif': 'image/gif',
+      'svg': 'image/svg+xml',
+      'webp': 'image/webp',
+      'ico': 'image/x-icon',
+      // Documents
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'ppt': 'application/vnd.ms-powerpoint',
+      'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      // Text
+      'txt': 'text/plain',
+      'md': 'text/markdown',
+      'html': 'text/html',
+      'css': 'text/css',
+      'js': 'application/javascript',
+      'json': 'application/json',
+      'xml': 'application/xml',
+      // Archives
+      'zip': 'application/zip',
+      'tar': 'application/x-tar',
+      'gz': 'application/gzip',
+      // Diagrams
+      'drawio': 'application/vnd.jgraph.mxfile',
+      'excalidraw': 'application/json',
+    };
+    return mimeTypes[ext] || 'application/octet-stream';
+  }
 }
