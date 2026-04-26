@@ -476,10 +476,41 @@ export class DocmostClient {
   /**
    * Get page content in TipTap JSON format
    * Used internally for manipulating page content
+   * Returns a valid TipTap document (with type: 'doc' and content array)
    */
   async getPageContent(pageId: string, spaceId: string): Promise<any> {
     const page = await this.getPage(pageId, spaceId);
-    return page.content;
+    let content = page.content;
+
+    // Handle string content (parse JSON if needed)
+    if (typeof content === 'string') {
+      try {
+        content = JSON.parse(content);
+      } catch {
+        // If it's not valid JSON, wrap as a text paragraph
+        content = {
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: content }] }],
+        };
+      }
+    }
+
+    // Handle null/undefined content (empty page)
+    if (!content) {
+      return { type: 'doc', content: [] };
+    }
+
+    // Handle content that's missing the doc wrapper (rare but possible)
+    if (Array.isArray(content)) {
+      return { type: 'doc', content };
+    }
+
+    // Handle content that's a valid TipTap doc but missing content array
+    if (content.type === 'doc' && !content.content) {
+      return { type: 'doc', content: [] };
+    }
+
+    return content;
   }
 
   /**
