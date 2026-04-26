@@ -171,7 +171,9 @@ export class DocmostClient {
 
   async getPage(pageId: string, spaceId: string): Promise<any> {
     const response = await this.client.post('/api/pages/info', { pageId, spaceId });
-    return response.data;
+    // Docmost API wraps response in {data: {...}, success: true}
+    // Return the actual page data, not the wrapper
+    return response.data?.data || response.data;
   }
 
   async createPage(data: {
