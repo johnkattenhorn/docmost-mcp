@@ -482,20 +482,23 @@ export class DocmostClient {
     const page = await this.getPage(pageId, spaceId);
     let content = page.content;
 
-    // DEBUG: Log raw content from API
-    console.error(`[DEBUG getPageContent] pageId=${pageId}`);
-    console.error(`[DEBUG getPageContent] raw content type: ${typeof content}`);
-    console.error(`[DEBUG getPageContent] raw content: ${JSON.stringify(content)?.substring(0, 500)}`);
+    // TRACE: Log raw content from API
+    console.error(`[TRACE getPageContent] pageId=${pageId}`);
+    console.error(`[TRACE getPageContent] raw content type: ${typeof content}`);
+    console.error(`[TRACE getPageContent] raw content keys: ${content ? Object.keys(content) : 'null'}`);
+    if (content?.content) {
+      console.error(`[TRACE getPageContent] raw content has ${content.content.length} nodes`);
+      console.error(`[TRACE getPageContent] node types: ${JSON.stringify(content.content.map((n: any) => n.type))}`);
+    }
 
     // Handle string content (parse JSON if needed)
     if (typeof content === 'string') {
-      console.error(`[DEBUG getPageContent] content is string, attempting JSON.parse`);
+      console.error(`[TRACE getPageContent] content is string, attempting JSON.parse`);
       try {
         content = JSON.parse(content);
-        console.error(`[DEBUG getPageContent] parsed successfully`);
+        console.error(`[TRACE getPageContent] parsed successfully`);
       } catch {
-        console.error(`[DEBUG getPageContent] parse failed, wrapping as paragraph`);
-        // If it's not valid JSON, wrap as a text paragraph
+        console.error(`[TRACE getPageContent] parse failed, wrapping as paragraph`);
         content = {
           type: 'doc',
           content: [{ type: 'paragraph', content: [{ type: 'text', text: content }] }],
@@ -505,23 +508,23 @@ export class DocmostClient {
 
     // Handle null/undefined content (empty page)
     if (!content) {
-      console.error(`[DEBUG getPageContent] content is null/undefined, returning empty doc`);
+      console.error(`[TRACE getPageContent] content is null/undefined, returning empty doc`);
       return { type: 'doc', content: [] };
     }
 
     // Handle content that's missing the doc wrapper (rare but possible)
     if (Array.isArray(content)) {
-      console.error(`[DEBUG getPageContent] content is array, wrapping in doc`);
+      console.error(`[TRACE getPageContent] content is array, wrapping in doc`);
       return { type: 'doc', content };
     }
 
     // Handle content that's a valid TipTap doc but missing content array
     if (content.type === 'doc' && !content.content) {
-      console.error(`[DEBUG getPageContent] doc has no content array, returning empty`);
+      console.error(`[TRACE getPageContent] doc has no content array, returning empty`);
       return { type: 'doc', content: [] };
     }
 
-    console.error(`[DEBUG getPageContent] returning normalized content with ${content.content?.length || 0} nodes`);
+    console.error(`[TRACE getPageContent] returning content with ${content.content?.length || 0} nodes`);
     return content;
   }
 

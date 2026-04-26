@@ -915,24 +915,28 @@ function buildServer(client: DocmostClient): McpServer {
 
           // 2. Build the drawio node
           const drawioNode = buildDrawioNode(attachment.id, url, fileName, 'center');
-          log(`[DEBUG insert_drawio_block] Built drawio node: ${JSON.stringify(drawioNode)}`);
+          console.error(`[TRACE insert_drawio_block] Built drawio node: ${JSON.stringify(drawioNode)}`);
 
           // 3. Get current page content
-          log(`[DEBUG insert_drawio_block] Fetching current content for page ${params.pageId}`);
+          console.error(`[TRACE insert_drawio_block] Fetching current content for page ${params.pageId}`);
           const currentContent = await client.getPageContent(params.pageId, params.spaceId);
-          log(`[DEBUG insert_drawio_block] Current content has ${currentContent?.content?.length || 0} nodes`);
-          log(`[DEBUG insert_drawio_block] Current content: ${JSON.stringify(currentContent)?.substring(0, 500)}`);
+          console.error(`[TRACE insert_drawio_block] Current content has ${currentContent?.content?.length || 0} nodes`);
+          console.error(`[TRACE insert_drawio_block] Current content type=${typeof currentContent}, keys=${Object.keys(currentContent || {})}`);
+          if (currentContent?.content) {
+            console.error(`[TRACE insert_drawio_block] Node types: ${JSON.stringify(currentContent.content.map((n: any) => n.type))}`);
+          }
 
           // 4. Insert node at position
           const newContent = position === 'prepend'
             ? prependNodeToDocument(currentContent, drawioNode)
             : appendNodeToDocument(currentContent, drawioNode);
-          log(`[DEBUG insert_drawio_block] After ${position}: new content has ${newContent?.content?.length || 0} nodes`);
-          log(`[DEBUG insert_drawio_block] New content: ${JSON.stringify(newContent)?.substring(0, 500)}`);
+          console.error(`[TRACE insert_drawio_block] After ${position}: new content has ${newContent?.content?.length || 0} nodes`);
+          console.error(`[TRACE insert_drawio_block] New node types: ${JSON.stringify(newContent?.content?.map((n: any) => n.type))}`);
 
           // 5. Update page with new content
-          log(`[DEBUG insert_drawio_block] Updating page with ${newContent?.content?.length || 0} nodes`);
+          console.error(`[TRACE insert_drawio_block] Updating page with ${newContent?.content?.length || 0} nodes`);
           await client.updatePageContent(params.pageId, newContent);
+          console.error(`[TRACE insert_drawio_block] Update complete`);
 
           return {
             content: [{
