@@ -485,11 +485,12 @@ export class DocmostClient {
   /**
    * Update page with TipTap JSON content directly
    */
-  async updatePageContent(pageId: string, content: any): Promise<any> {
+  async updatePageContent(pageId: string, content: any, operation: 'replace' | 'append' | 'prepend' = 'replace'): Promise<any> {
     const response = await this.client.post('/api/pages/update', {
       pageId,
       content,
       format: 'json',
+      operation,
     });
     return response.data;
   }
